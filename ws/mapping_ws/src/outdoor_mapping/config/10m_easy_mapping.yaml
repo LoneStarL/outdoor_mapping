@@ -1,0 +1,38 @@
+# 10m_easy数据包配置
+
+enhanced_lidar_slam_node:
+  ros__parameters:
+    # 帧配置
+    map_frame: "map"
+    lidar_frame: "livox_frame_front"
+    odom_frame: "odom"
+    
+    # 点云处理参数
+    voxel_size: 0.1                     
+    max_correspondence_distance: 1.0    
+    max_iteration: 30                   
+    
+    # 传感器使用开关
+    use_imu: false                      
+    use_gps: false                      
+    use_odom: false                     
+    
+    # 输出配置
+    save_format: "pcd"
+    save_map_interval: 30.0             
+    output_dir: "maps"  
+    
+    # 退化检测参数
+    degeneracy_threshold: 0.05
+    consecutive_degenerate_limit: 10
+    
+    # QoS配置
+    qos_profile:
+      reliability: "best_effort"
+      history: "keep_last"
+      depth: 5
+
+# RViz2配置
+rviz2:
+  ros__parameters:
+    config_file: "rviz/10m_easy_mapping.rviz"

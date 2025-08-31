@@ -1,0 +1,42 @@
+# A_short_hard数据包LiDAR SLAM配置
+
+enhanced_lidar_slam_node:
+  ros__parameters:
+    # 帧配置
+    map_frame: "map"
+    lidar_frame: "livox_frame_front"
+    odom_frame: "odom"
+    
+    # 点云处理参数
+    voxel_size: 0.15                    
+    max_correspondence_distance: 1.5     
+    max_iteration: 25                   
+    
+    # 传感器使用开关
+    use_imu: true                  
+    use_gps: true                    
+    use_odom: true                     
+    
+    # 输出配置
+    save_format: "pcd"
+    save_map_interval: 60.0             
+    output_dir: "maps/A_short_hard"     
+    
+    # 退化检测参数
+    degeneracy_threshold: 0.08
+    consecutive_degenerate_limit: 8
+    
+    # 内存管理参数
+    max_map_points: 500000              
+    enable_compression: true            
+    
+    # QoS配置
+    qos_profile:
+      reliability: "best_effort"
+      history: "keep_last"
+      depth: 3                          
+
+# RViz2配置
+rviz2:
+  ros__parameters:
+    config_file: "rviz/A_short_hard_mapping.rviz"

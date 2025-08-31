@@ -1,0 +1,11 @@
+# ROS2依赖（通过apt安装）
+# sudo apt install ros-humble-desktop
+# sudo apt install ros-humble-pcl-conversions
+# sudo apt install ros-humble-pcl-ros
+# sudo apt install ros-humble-tf2-ros
+
+# Python依赖
+open3d>=0.17.0
+numpy>=1.21.0
+scipy>=1.7.0
+matplotlib>=3.5.0

@@ -1,0 +1,42 @@
+# degenerative_hard数据包
+
+enhanced_lidar_slam_node:
+  ros__parameters:
+    # 帧配置
+    map_frame: "map"
+    lidar_frame: "livox_frame_front"
+    odom_frame: "odom"
+    
+    # 点云处理参数
+    voxel_size: 0.01                    # 精细调整：从0.05改为0.01，降低压缩比
+    max_correspondence_distance: 0.5    # 精细调整：从0.8减小，提高配准精度
+    max_iteration: 50                   # 保持高精度配准                   
+    
+    # 传感器使用开关
+    use_imu: true                       
+    use_gps: true                       
+    use_odom: true                      
+    
+    # 输出配置
+    save_format: "pcd"                  
+    save_map_interval: 30.0             
+    output_dir: "maps"
+    
+    # 内存管理参数
+    max_map_points: 5000000             # 增加地图点数上限到500万
+    enable_compression: false           # 禁用压缩以获得更大文件                  
+    
+    # 退化检测参数
+    degeneracy_threshold: 0.1           
+    consecutive_degenerate_limit: 5     
+    
+    # QoS配置
+    qos_profile:
+      reliability: "best_effort"
+      history: "keep_last"
+      depth: 10
+
+# RViz2配置
+rviz2:
+  ros__parameters:
+    config_file: "rviz/degenerative_hard_mapping.rviz"
