@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# 点云处理工具模块 提供点云转换、处理和可视化功能
+"""
+点云处理工具模块
+提供点云转换、处理和可视化功能
+"""
 
 import numpy as np
 import open3d as o3d
@@ -10,12 +13,15 @@ from std_msgs.msg import Header
 
 class PointCloudUtils:
     """点云处理工具类"""
+    
     @staticmethod
     def ros_to_numpy(msg):
         """
         将ROS PointCloud2消息转换为numpy数组
+        
         Args:
             msg: PointCloud2消息
+            
         Returns:
             numpy数组，形状为(N, 3)
         """
@@ -45,10 +51,12 @@ class PointCloudUtils:
     def numpy_to_ros(points, frame_id, timestamp=None):
         """
         将numpy数组转换为ROS PointCloud2消息
+        
         Args:
             points: numpy数组，形状为(N, 3)
             frame_id: 坐标系名称
             timestamp: 时间戳，如果为None则使用当前时间
+            
         Returns:
             PointCloud2消息
         """
@@ -90,12 +98,14 @@ class PointCloudUtils:
             return None
     
     @staticmethod
-    def preprocess_pointcloud(points, voxel_size=0.05):
+    def preprocess_pointcloud(points, voxel_size=0.005):
         """
-        预处理点云：下采样和去噪
+        预处理点云：最小化数据损失
+        
         Args:
             points: numpy数组，形状为(N, 3)
             voxel_size: 体素下采样大小
+            
         Returns:
             处理后的Open3D点云对象
         """
@@ -106,23 +116,26 @@ class PointCloudUtils:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points)
         
-        # 下采样
-        pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+        # 最小化下采样 - 仅在必要时进行
+        if voxel_size > 0.001:  # 避免过度下采样
+            pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
         
-        # 去除离群点
+        # 放宽离群点去除条件，保留更多数据
         pcd, _ = pcd.remove_statistical_outlier(
-            nb_neighbors=20, std_ratio=2.0
+            nb_neighbors=10, std_ratio=3.0  # 减少邻居数，增加标准差倍数
         )
         
         return pcd
     
     @staticmethod
-    def merge_pointclouds(pcd_list, voxel_size=0.05):
+    def merge_pointclouds(pcd_list, voxel_size=0.005):
         """
-        合并多个点云
+        合并多个点云 - 最小化数据损失
+        
         Args:
             pcd_list: Open3D点云对象列表
             voxel_size: 合并后的体素下采样大小
+            
         Returns:
             合并后的Open3D点云对象
         """
@@ -133,7 +146,8 @@ class PointCloudUtils:
         for pcd in pcd_list[1:]:
             merged += pcd
         
-        # 合并后下采样
-        merged = merged.voxel_down_sample(voxel_size=voxel_size)
+        # 仅在必要时进行最小化下采样
+        if voxel_size > 0.001:
+            merged = merged.voxel_down_sample(voxel_size=voxel_size)
         
         return merged

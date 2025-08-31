@@ -27,9 +27,9 @@ print('SciPy版本:', scipy.__version__)
 try:
     import open3d
     print('Open3D版本:', open3d.__version__)
-    print('✅ 所有依赖兼容')
+    print(' 所有依赖兼容')
 except Exception as e:
-    print('❌ 依赖问题:', e)
+    print(' 依赖问题:', e)
     print('尝试重新安装...')
     import subprocess
     subprocess.run(['pip3', 'install', '--user', '--force-reinstall', 'numpy<1.25.0', 'open3d', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'])

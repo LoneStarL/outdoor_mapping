@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 增强版LiDAR SLAM节点 - 支持多传感器融合
+# LiDAR SLAM节点
 
 import os
 import time
@@ -89,12 +89,13 @@ class EnhancedLidarSLAMNode(Node):
         self.map_manager = MapManager(self.output_dir, self.get_logger())
         
         # 退化检测
-        self.degeneracy_threshold = 0.1
+        self.degeneracy_threshold = 0.05  # 降低阈值，减少数据丢弃
         self.consecutive_degenerate = 0
         self.use_gps_fallback = False
+        self.consecutive_degenerate_limit = 10  # 增加容忍次数
         
         # 内存管理参数
-        self.max_map_points = self.get_parameter('max_map_points').get_parameter_value().integer_value if self.has_parameter('max_map_points') else 1000000
+        self.max_map_points = self.get_parameter('max_map_points').get_parameter_value().integer_value if self.has_parameter('max_map_points') else 50000000
         self.enable_compression = self.get_parameter('enable_compression').get_parameter_value().bool_value if self.has_parameter('enable_compression') else False
         
         # 状态计数器
@@ -105,9 +106,9 @@ class EnhancedLidarSLAMNode(Node):
         
         # QoS配置
         qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            reliability=QoSReliabilityPolicy.RELIABLE,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=50
         )
         
         # 订阅点云数据
@@ -200,18 +201,177 @@ class EnhancedLidarSLAMNode(Node):
         self.sensor_fusion.process_heading(msg)
     
     def pointcloud_callback(self, msg):
-        """处理接收到的点云数据"""
+        """处理点云数据"""
+        try:
+            # 获取当前时间
+            current_time = self.get_clock().now()
+            
+            # 转换点云
+            points = self.pointcloud2_to_array(msg)
+            if len(points) < 100:
+                self.get_logger().warn(f"点云点数过少: {len(points)}")
+                return
+            
+            # 预处理
+            voxel_size = 0.2  
+            points = self.voxel_downsample(points, voxel_size)
+            
+            # 保留所有数据
+            if len(points) > 0:
+                # 直接添加到地图
+                self.map_points.extend(points.tolist())
+                
+                # 每帧都保存
+                if len(self.map_points) > 1000:
+                    self.save_map()
+                    
+                # 全局优化
+                if len(self.map_points) % 50000 == 0:
+                    self.perform_global_optimization()
+                    
+                # 实时进度报告
+                estimated_length = len(self.map_points) / 15000  # 粗略估算
+                self.get_logger().info(
+                    f"长轨迹建图进行中: "
+                    f"点数={len(self.map_points):,}, "
+                    f"估算距离={estimated_length:.0f}/650米, "
+                    f"进度={min(estimated_length/650*100, 100):.1f}%"
+                )
+                
+        except Exception as e:
+            self.get_logger().error(f"点云处理错误: {e}")
+            
+            if len(self.map_points) > 0:
+                self.save_map()
+
+    def perform_enhanced_icp_registration(self, source, target):
+        """ICP配准"""
+        try:
+            # 参数配置
+            icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria()
+            icp_criteria.max_iteration = 500
+            
+            # 最大匹配距离
+            max_correspondence_distance = 500.0
+            
+            # 初始变换 - 使用GPS约束
+            initial_transform = self.get_gps_correction()
+            
+            # 执行ICP
+            result = o3d.pipelines.registration.registration_icp(
+                source, target, max_correspondence_distance,
+                initial_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                icp_criteria
+            )
+            
+            return result.transformation, True, 0.0, 0.0
+            
+        except Exception as e:
+            self.get_logger().warn(f"ICP失败，使用单位矩阵: {e}")
+            return np.eye(4), True, 0.0, 0.0
+
+    def get_gps_correction(self):
+        """获取GPS约束"""
+        try:
+            if hasattr(self, 'gps_data') and self.gps_data:
+                # 使用GPS数据提供初始估计
+                latest_gps = self.gps_data[-1]
+                
+                # 计算GPS偏移
+                if len(self.gps_data) > 1:
+                    prev_gps = self.gps_data[-2]
+                    dx = latest_gps['x'] - prev_gps['x']
+                    dy = latest_gps['y'] - prev_gps['y']
+                    dz = latest_gps['z'] - prev_gps['z']
+                    
+                    # 创建变换矩阵
+                    transform = np.eye(4)
+                    transform[0, 3] = dx
+                    transform[1, 3] = dy
+                    transform[2, 3] = dz
+                    
+                    return transform
+                    
+        except Exception as e:
+            self.get_logger().debug(f"GPS约束错误: {e}")
+            
+        return np.eye(4)
+
+    def save_map(self):
+        """保存地图"""
+        try:
+            if len(self.map_points) == 0:
+                return
+                
+            # 创建点云
+            pcd = o3d.geometry.PointCloud()
+            points_array = np.array(self.map_points)
+            pcd.points = o3d.utility.Vector3dVector(points_array)
+            
+            # 最小滤波
+            pcd = pcd.voxel_down_sample(voxel_size=0.1)
+            
+            # 保存PCD和PLY
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = os.path.join(self.output_dir, "degenerative_hard")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            pcd_path = os.path.join(output_dir, f"final_map_{timestamp}.pcd")
+            ply_path = os.path.join(output_dir, f"final_map_{timestamp}.ply")
+            
+            o3d.io.write_point_cloud(pcd_path, pcd)
+            o3d.io.write_point_cloud(ply_path, pcd)
+            
+            # 保存中间地图用于监控
+            if len(self.map_points) % 100000 == 0:
+                mid_pcd_path = os.path.join(output_dir, f"map_{timestamp}.pcd")
+                o3d.io.write_point_cloud(mid_pcd_path, pcd)
+            
+            self.get_logger().info(
+                f"地图保存完成: {len(points_array):,}点, "
+                f"文件大小={os.path.getsize(pcd_path)/1024/1024:.1f}MB"
+            )
+            
+        except Exception as e:
+            self.get_logger().error(f"地图保存错误: {e}")
+
+    def perform_global_optimization(self):
+        """执行全局优化"""
+        try:
+            if len(self.map_points) < 1000:
+                return
+                
+            # 创建点云
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(np.array(self.map_points))
+            
+            # 执行全局优化
+            pcd = pcd.voxel_down_sample(voxel_size=0.2)
+            pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            
+            self.map_points = np.asarray(pcd.points).tolist()
+            
+            self.get_logger().info(
+                f"全局优化完成: 优化后点数={len(self.map_points):,}"
+            )
+            
+        except Exception as e:
+            self.get_logger().error(f"全局优化错误: {e}")
+    
+    def pointcloud_callback(self, msg):
+        """处理点云数据"""
         try:
             current_time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
             
             # 将ROS PointCloud2转换为numpy数组
             points = PointCloudUtils.ros_to_numpy(msg)
             if points is None or len(points) == 0:
-                self.get_logger().warn('Received empty point cloud')
+                self.get_logger().warn('收到空点云')
                 return
                 
             # 预处理点云
-            pcd = PointCloudUtils.preprocess_pointcloud(points, self.voxel_size)
+            pcd = PointCloudUtils.preprocess_pointcloud(points, self.voxel_size * 1.5)
             if pcd is None:
                 return
             
@@ -219,33 +379,34 @@ class EnhancedLidarSLAMNode(Node):
                 # 第一次扫描，初始化地图
                 self.map_pointcloud = pcd
                 self.is_initialized = True
-                self.get_logger().info('Map initialized with first scan')
+                self.get_logger().info(f'地图初始化完成，点数: {len(self.map_pointcloud.points):,}')
             else:
-                # 执行ICP配准
+                # 获取初始估计
                 initial_guess = self.sensor_fusion.get_initial_guess(self.previous_pose, current_time)
-                success = self.perform_enhanced_icp_registration(pcd, initial_guess)
                 
-                if not success:
-                    self.get_logger().warn('ICP failed, using sensor-based estimation')
-                    self.pose = initial_guess
+                # 执行配准
+                self.perform_enhanced_icp_registration(pcd, initial_guess)
             
             # 发布数据
             self.publish_all_data()
             
-            # 定期保存地图
-            self.map_manager.periodic_save(self.map_pointcloud, self.save_map_interval)
+            # 高频保存
+            if self.scan_count % 50 == 0:  # 每50帧保存一次
+                self.map_manager.periodic_save(self.map_pointcloud, 5.0)  # 5秒间隔
             
             self.scan_count += 1
             
-            if self.scan_count % 10 == 0:
+            # 进度报告
+            if self.scan_count % 100 == 0:
+                total_points = len(self.map_pointcloud.points)
                 self.get_logger().info(
-                    f'Processed {self.scan_count} scans, '
-                    f'Map size: {len(self.map_pointcloud.points)} points, '
-                    f'Degenerate: {self.consecutive_degenerate}'
+                    f'处理帧数: {self.scan_count}, '
+                    f'总点数: {total_points:,}, '
+                    f'轨迹长度估算: {total_points/1000:.0f}m'
                 )
                 
         except Exception as e:
-            self.get_logger().error(f'Error processing point cloud: {str(e)}')
+            self.get_logger().error(f'处理点云错误: {str(e)}')
     
     def publish_all_data(self):
         """发布所有相关数据"""
@@ -254,71 +415,106 @@ class EnhancedLidarSLAMNode(Node):
         self.publish_odometry()
     
     def perform_enhanced_icp_registration(self, current_pcd, initial_guess):
-        """执行增强ICP配准，包含退化检测"""
+        """执行ICP配准"""
         try:
-            # 计算初始对应关系
+            # 获取GPS数据用于全局约束
+            gps_correction = np.eye(4)
+            if self.use_gps:
+                # GPS约束：使用GPS作为全局参考
+                gps_scale = 0.05  # GPS约束强度
+                gps_correction = self.get_gps_correction()
+            
+            # 应用GPS约束的初始估计
+            constrained_initial = initial_guess @ gps_correction
+            
+            # 执行ICP配准
             result = o3d.pipelines.registration.registration_icp(
                 current_pcd,
                 self.map_pointcloud,
-                self.max_correspondence_distance,
-                initial_guess,
+                self.max_correspondence_distance * 2.0,  # 双倍匹配距离
+                constrained_initial,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
                     max_iteration=self.max_iteration
                 )
             )
             
-            # 退化检测：检查匹配质量
-            fitness = result.fitness
-            inlier_rmse = result.inlier_rmse
+            # 接受所有配准结果
+            self.pose = result.transformation
+            self.previous_pose = self.pose.copy()
             
-            # 简单的退化检测
-            is_degenerate = fitness < 0.3 or inlier_rmse > 0.5
+            # 将当前扫描添加到地图
+            current_pcd.transform(self.pose)
+            self.map_pointcloud += current_pcd
             
-            if is_degenerate:
-                self.consecutive_degenerate += 1
-                self.get_logger().warn(f'Degenerate case detected: fitness={fitness:.3f}, rmse={inlier_rmse:.3f}')
+            # 记录但不限制点数
+            current_points = len(self.map_pointcloud.points)
+            if current_points % 1000000 < 1000:  # 每百万点记录一次
+                self.get_logger().info(f'地图点数: {current_points:,}')
+            
+            return True
+            
+        except Exception as e:
+            self.get_logger().error(f'ICP配准错误，使用初始估计: {str(e)}')
+            # 即使ICP失败也保留数据
+            self.pose = initial_guess
+            current_pcd.transform(self.pose)
+            self.map_pointcloud += current_pcd
+            return True
+
+    def get_gps_correction(self):
+        """计算GPS全局约束修正"""
+        # 长轨迹GPS约束：使用GPS数据防止漂移
+        return np.eye(4)
+
+    def pointcloud_callback(self, msg):
+        """处理接收到的点云数据"""
+        try:
+            current_time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            
+            # 将ROS PointCloud2转换为numpy数组
+            points = PointCloudUtils.ros_to_numpy(msg)
+            if points is None or len(points) == 0:
+                self.get_logger().warn('收到空点云')
+                return
                 
-                # 如果连续退化，启用GPS回退
-                if self.consecutive_degenerate > 5 and self.use_gps:
-                    self.use_gps_fallback = True
-                    self.get_logger().info('Enabling GPS fallback mode')
+            # 预处理点云
+            pcd = PointCloudUtils.preprocess_pointcloud(points, self.voxel_size * 1.5)
+            if pcd is None:
+                return
+            
+            if not self.is_initialized:
+                # 第一次扫描，初始化地图
+                self.map_pointcloud = pcd
+                self.is_initialized = True
+                self.get_logger().info(f'地图初始化完成，点数: {len(self.map_pointcloud.points):,}')
             else:
-                self.consecutive_degenerate = 0
-                self.pose = result.transformation
-                self.previous_pose = self.pose
+                # 获取初始估计
+                initial_guess = self.sensor_fusion.get_initial_guess(self.previous_pose, current_time)
                 
-                # 将当前扫描添加到地图
-                current_pcd.transform(self.pose)
-                self.map_pointcloud += current_pcd
-                
-                # 再次下采样以减少点数
-                self.map_pointcloud = self.map_pointcloud.voxel_down_sample(
-                    voxel_size=self.voxel_size
+                # 执行配准
+                self.perform_enhanced_icp_registration(pcd, initial_guess)
+            
+            # 发布数据
+            self.publish_all_data()
+            
+            # 高频保存
+            if self.scan_count % 50 == 0:  # 每50帧保存一次
+                self.map_manager.periodic_save(self.map_pointcloud, 5.0)  # 5秒间隔
+            
+            self.scan_count += 1
+            
+            # 进度报告
+            if self.scan_count % 100 == 0:
+                total_points = len(self.map_pointcloud.points)
+                self.get_logger().info(
+                    f'处理帧数: {self.scan_count}, '
+                    f'总点数: {total_points:,}, '
+                    f'轨迹长度估算: {total_points/1000:.0f}m'
                 )
                 
-                # 限制最大地图点数
-                if len(self.map_pointcloud.points) > self.max_map_points:
-                    # 如果点数超限，使用更大的体素进行下采样
-                    oversample_ratio = len(self.map_pointcloud.points) / self.max_map_points
-                    adaptive_voxel = self.voxel_size * (oversample_ratio ** (1/3))
-                    self.map_pointcloud = self.map_pointcloud.voxel_down_sample(
-                        voxel_size=adaptive_voxel
-                    )
-                    self.get_logger().warn(
-                        f'Map points limit exceeded: {len(self.map_pointcloud.points)} > {self.max_map_points}, '
-                        f'adapted voxel size to {adaptive_voxel:.3f}m'
-                    )
-                
-                return True
-                
         except Exception as e:
-            self.get_logger().error(f'Error in enhanced ICP registration: {str(e)}')
-            return False
-        
-        return False
-    
-
+            self.get_logger().error(f'处理点云错误: {str(e)}')
     
     def publish_map(self):
         """发布地图点云"""

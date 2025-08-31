@@ -1,5 +1,3 @@
-# 300m_medium数据包配置
-
 enhanced_lidar_slam_node:
   ros__parameters:
     # 帧配置
@@ -8,29 +6,42 @@ enhanced_lidar_slam_node:
     odom_frame: "odom"
     
     # 点云处理参数
-    voxel_size: 0.08                    
-    max_correspondence_distance: 0.9    
-    max_iteration: 40                   
+    voxel_size: 0.15                    
+    max_correspondence_distance: 8.0    
+    max_iteration: 80                   
+    
+    # 内存限制
+    max_points_per_map: 15000000        
+    max_keyframes: 1000                 
     
     # 传感器使用开关
     use_imu: true                       
-    use_gps: false                      
+    use_gps: true                       
     use_odom: true                      
+    
+    # GPS约束参数
+    gps_weight: 0.8                     
+    gps_correction_interval: 15.0       
+    gps_distance_threshold: 15.0        
     
     # 输出配置
     save_format: "pcd"
-    save_map_interval: 30.0             
-    output_dir: "maps"  
+    save_map_interval: 20.0             
+    output_dir: "maps"
     
     # 退化检测参数
-    degeneracy_threshold: 0.08
-    consecutive_degenerate_limit: 7
+    degeneracy_threshold: 0.001         
+    consecutive_degenerate_limit: 1000  
+    
+    # 关键帧参数
+    keyframe_distance_threshold: 2.5    
+    keyframe_rotation_threshold: 0.1    
     
     # QoS配置
     qos_profile:
       reliability: "best_effort"
-      history: "keep_last"
-      depth: 8
+      history: "keep_all"               
+      depth: 1000                       
 
 # RViz2配置
 rviz2:

@@ -1,5 +1,3 @@
-# A_short_hard数据包LiDAR SLAM配置
-
 enhanced_lidar_slam_node:
   ros__parameters:
     # 帧配置
@@ -8,33 +6,50 @@ enhanced_lidar_slam_node:
     odom_frame: "odom"
     
     # 点云处理参数
-    voxel_size: 0.15                    
-    max_correspondence_distance: 1.5     
-    max_iteration: 25                   
+    voxel_size: 0.2                    
+    max_correspondence_distance: 5.0    
+    max_iteration: 100                  
     
     # 传感器使用开关
-    use_imu: true                  
-    use_gps: true                    
-    use_odom: true                     
+    use_imu: true
+    use_gps: true
+    use_odom: true
     
     # 输出配置
     save_format: "pcd"
     save_map_interval: 60.0             
-    output_dir: "maps/A_short_hard"     
+    output_dir: "maps/A_short_hard"
     
     # 退化检测参数
-    degeneracy_threshold: 0.08
-    consecutive_degenerate_limit: 8
+    degeneracy_threshold: 0.01          
+    consecutive_degenerate_limit: 999   
     
-    # 内存管理参数
-    max_map_points: 500000              
-    enable_compression: true            
+    # 内存管理
+    max_map_points: 20000000            
+    enable_compression: false           
+    
+    # 关键帧策略
+    keyframe_distance: 2.0               
+    keyframe_rotation: 0.1              
+    
+    # 匹配策略
+    min_fitness_threshold: 0.01         
+    max_rmse_threshold: 10.0             
+    
+    # 全局优化
+    enable_global_optimization: true
+    enable_loop_closure: true
+    global_optimization_interval: 180   
+    
+    # 数据保留策略
+    data_retention_mode: "ultra"        
+    skip_empty_scans: false
     
     # QoS配置
     qos_profile:
-      reliability: "best_effort"
-      history: "keep_last"
-      depth: 3                          
+      reliability: "reliable"
+      history: "keep_all"               
+      depth: 99999                      
 
 # RViz2配置
 rviz2:

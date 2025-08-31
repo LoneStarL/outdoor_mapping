@@ -29,7 +29,7 @@ fi
 # 检查Open3D依赖
 echo -e "${CYAN}🔍 检查依赖...${NC}"
 sudo docker run --rm $IMAGE_NAME python3 -c "import open3d; print('Open3D版本:', open3d.__version__)" 2>/dev/null || {
-    echo -e "${YELLOW}⚠️  发现NumPy兼容性问题，正在修复...${NC}"
+    echo -e "${YELLOW}  发现NumPy兼容性问题，正在修复...${NC}"
     
     # 创建修复的容器
     cat > ./fix-open3d-container.sh << 'EOF'
@@ -87,9 +87,9 @@ print('scikit-learn版本:', sklearn.__version__)
 try:
     import open3d
     print('Open3D版本:', open3d.__version__)
-    print('✅ 所有依赖安装成功')
+    print(' 所有依赖安装成功')
 except Exception as e:
-    print('❌ Open3D导入失败:', e)
+    print(' Open3D导入失败:', e)
     exit(1)
 "
 
@@ -105,18 +105,18 @@ EOF
     
     chmod +x ./fix-open3d-container.sh
     sudo docker run --rm -v $(pwd)/fix-open3d-container.sh:/fix-open3d-container.sh $IMAGE_NAME bash /fix-open3d-container.sh
-    echo -e "${GREEN}✅ 依赖已修复${NC}"
+    echo -e "${GREEN} 依赖已修复${NC}"
 }
 
 # 创建本地结果目录
-echo -e "${CYAN}📁 创建结果目录...${NC}"
+echo -e "${CYAN} 创建结果目录...${NC}"
 mkdir -p ./mapping-results/$TIMESTAMP/{maps,logs,data}
 
 # 显示可用数据集
-echo -e "${CYAN}📊 可用数据集:${NC}"
+echo -e "${CYAN} 可用数据集:${NC}"
 sudo docker run --rm $IMAGE_NAME ls maps/
 
-echo -e "${CYAN}🚀 运行数据集: $DATASET${NC}"
+echo -e "${CYAN}s 运行数据集: $DATASET${NC}"
 echo -e "${CYAN}显示模式: $DISPLAY_MODE${NC}"
 echo -e "${CYAN}结果保存到: ./mapping-results/$TIMESTAMP/${NC}"
 
@@ -151,9 +151,9 @@ print('SciPy版本:', scipy.__version__)
 try:
     import open3d
     print('Open3D版本:', open3d.__version__)
-    print('✅ 所有依赖兼容')
+    print(' 所有依赖兼容')
 except Exception as e:
-    print('❌ 依赖问题:', e)
+    print(' 依赖问题:', e)
     print('尝试重新安装...')
     import subprocess
     subprocess.run(['pip3', 'install', '--user', '--force-reinstall', 'numpy<1.25.0', 'open3d', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'])
@@ -198,7 +198,7 @@ if [[ "$DISPLAY_MODE" == "gui" ]]; then
             DOCKER_CMD="$DOCKER_CMD -v /tmp/.X11-unix:/tmp/.X11-unix"
         fi
     else
-        echo -e "${YELLOW}⚠️  DISPLAY未设置，使用无头模式${NC}"
+        echo -e "${YELLOW}  DISPLAY未设置，使用无头模式${NC}"
         DISPLAY_MODE="headless"
     fi
 fi
@@ -212,26 +212,26 @@ DOCKER_CMD="$DOCKER_CMD -e PYTHONPATH=/home/lonestarl/.local/lib/python3.10/site
 DOCKER_CMD="$DOCKER_CMD $IMAGE_NAME"
 
 # 运行容器
-echo -e "${YELLOW}🚀 启动建图任务...${NC}"
+echo -e "${YELLOW} 启动建图任务...${NC}"
 eval $DOCKER_CMD bash /run-container-mapping-local.sh
 
 echo -e "${GREEN}==============================================${NC}"
-echo -e "${GREEN}  🎉 建图任务完成!${NC}"
+echo -e "${GREEN}   建图任务完成!${NC}"
 echo -e "${GREEN}==============================================${NC}"
 
-echo -e "${CYAN}📁 结果文件位置:${NC}"
+echo -e "${CYAN} 结果文件位置:${NC}"
 echo "  主目录: ./mapping-results/$TIMESTAMP/"
 echo
-echo -e "${CYAN}📊 文件结构:${NC}"
+echo -e "${CYAN} 文件结构:${NC}"
 ls -la ./mapping-results/$TIMESTAMP/
 
-echo -e "${CYAN}🗺️  地图文件:${NC}"
+echo -e "${CYAN}  地图文件:${NC}"
 ls -la ./mapping-results/$TIMESTAMP/maps/
 
-echo -e "${CYAN}📋 日志文件:${NC}"
+echo -e "${CYAN} 日志文件:${NC}"
 ls -la ./mapping-results/$TIMESTAMP/logs/
 
-echo -e "${CYAN}🎯 使用说明:${NC}"
+echo -e "${CYAN} 使用说明:${NC}"
 echo "1. 无头模式运行:"
 echo "   ./run-mapping-with-results.sh easy"
 echo

@@ -52,9 +52,9 @@ print('scikit-learn版本:', sklearn.__version__)
 try:
     import open3d
     print('Open3D版本:', open3d.__version__)
-    print('✅ 所有依赖安装成功')
+    print(' 所有依赖安装成功')
 except Exception as e:
-    print('❌ Open3D导入失败:', e)
+    print(' Open3D导入失败:', e)
     exit(1)
 "
 
